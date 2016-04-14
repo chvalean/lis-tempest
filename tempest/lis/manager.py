@@ -1,6 +1,6 @@
 # Copyright 2012 OpenStack Foundation
 # Copyright 2013 IBM Corp.
-# Copyright 2014 Cloudbase Solutions Srl
+# Copyright 2016 Cloudbase Solutions Srl
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -1723,6 +1723,14 @@ class LisBase(ScenarioTest):
     def send_nmi_interrupt(self, instance_name):
         script_location = "%s%s" % (self.script_folder,
                                     'setupscripts\\nmi_send_interrupt.ps1')
+        self.host_client.run_powershell_cmd(
+            script_location,
+            hvServer=self.host_name,
+            vmName=instance_name)
+
+    def send_nmi_interrupt_change_status(self, instance_name):
+        script_location = "%s%s" % (self.script_folder,
+                                    'setupscripts\\nmi_inject_interrupt.ps1')
         self.host_client.run_powershell_cmd(
             script_location,
             hvServer=self.host_name,
