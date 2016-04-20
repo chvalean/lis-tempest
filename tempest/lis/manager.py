@@ -1736,6 +1736,14 @@ class LisBase(ScenarioTest):
             hvServer=self.host_name,
             vmName=instance_name)
 
+    def send_nmi_unprivileged(self, instance_name):
+        script_location = "%s%s" % (self.script_folder,
+                                    'setupscripts\\nmi_send_unprivileged.ps1')
+        self.host_client.run_powershell_cmd(
+            script_location,
+            hvServer=self.host_name,
+            vmName=instance_name)
+
     def change_cpu(self, instance_name, new_cpu_count):
         """Change the vcpu of a vm"""
 
