@@ -12,25 +12,23 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import os
 from tempest.common import waiters
 from tempest import config
-from tempest import exceptions
-from tempest import test
-from tempest.common.utils import data_utils
-from tempest.lis import manager
 from oslo_log import log as logging
+from tempest.lis import manager
 from tempest.scenario import utils as test_utils
-import time
+from tempest import test
 
 CONF = config.CONF
 
 LOG = logging.getLogger(__name__)
 
 
-class Reboot(manager.LisBase):
+class KVP(manager.LisBase):
 
     def setUp(self):
-        super(Reboot, self).setUp()
+        super(KVP, self).setUp()
         # Setup image and flavor the test instance
         # Support both configured and injected values
         if not hasattr(self, 'image_ref'):
@@ -47,6 +45,7 @@ class Reboot(manager.LisBase):
             )
         self.host_name = ""
         self.instance_name = ""
+        self.deamon = "'[h]v_kvp_daemon\|[h]ypervkvpd'"
         self.run_ssh = CONF.validation.run_validation and \
             self.image_utils.is_sshable_image(self.image_ref)
         self.ssh_user = CONF.validation.image_ssh_user
@@ -55,50 +54,33 @@ class Reboot(manager.LisBase):
                       image=self.image_ref, flavor=self.flavor_ref,
                       ssh=self.run_ssh, ssh_user=self.ssh_user))
 
-    def create_flavor(self, new_ram):
-        _, c_f = self.flavor_client.get_flavor_details(self.flavor_ref)
-        self.assertEqual(_.status, 200)
-        name = data_utils.rand_name('flavor')
-        f_id = data_utils.rand_int_id(start=1000)
-        _, new_f = self.flavor_client.create_flavor(name=name, ram=new_ram, vcpus=int(
-            c_f['vcpus']), disk=int(c_f['disk']), flavor_id=f_id)
-        self.assertEqual(_.status, 200)
-        self.addCleanup(self.flavor_client.delete_flavor, new_f['id'])
-        return new_f['id']
-
-    def _test_reboot_native(self, mem_settings):
-        """ Currently resize failing """
-        for memory in mem_settings:
-            new_flavor = self.create_flavor(memory)
-            self.servers_client.resize(self.server_id, new_flavor)
-            waiters.wait_for_server_status(self.servers_client, self.server_id,
-                                                       'VERIFY_RESIZE')
-            self.servers_client.confirm_resize(self.server_id)
-            self.servers_client.reboot(self.server_id, 'SOFT')
-            self._wait_for_server_status('ACTIVE')
-
-    def _test_reboot(self, mem_settings):
-        for memory in mem_settings:
-            self.stop_vm(self.server_id)
-            self.set_ram_settings(self.instance_name, memory)
-            self.start_vm(self.server_id)
-            try:
-                self.linux_client.ping_host('127.0.0.1')
-
-            except exceptions.SSHExecCommandFailed as exc:
-                LOG.exception(exc)
-                raise exc
-
-    @test.attr(type=['core'])
+    @test.attr(type=['smoke', 'core', 'kvp'])
     @test.services('compute', 'network')
-    def test_reboot_various_mem(self):
+    def test_kvp_basic(self):
         self.spawn_vm()
         self._initiate_linux_client(self.floating_ip['floatingip']['floating_ip_address'],
                                     self.ssh_user, self.keypair['private_key'])
-        """
-        Get back to this approach once resize is fixed
-        mem_settings = [2048, 3584, 4608, 6144]
-        self._test_reboot_native(mem_settings)
-        """
-        mem_settings = [2048, 3584, 4608]
-        self._test_reboot(mem_settings)
+        self.verify_lis(self.instance_name, "'Key-Value Pair Exchange'")
+        """ Check if KVP runs on the vm """
+        try:
+            output = self.linux_client.verify_deamon(self.deamon)
+            LOG.info('KVP Deamon is running ${0}'.format(output))
+            self.assertIsNotNone(output)
+        except Exception:
+            LOG.exception('KVP Deamon ' + self.deamon + ' is not running!')
+            self._log_console_output()
+            raise
+        self.check_kvp_basic(self.instance_name)
+        self.servers_client.delete_server(self.instance['id'])
+
+    @test.attr(type=['smoke', 'core', 'kvp'])
+    @test.services('compute', 'network')
+    def test_kvp_add_Key_Values(self):
+        self.spawn_vm()
+        self._initiate_linux_client(self.floating_ip['floatingip']['floating_ip_address'],
+                                    self.ssh_user, self.keypair['private_key'])
+        self.verify_lis(self.instance_name, "'Key-Value Pair Exchange'")
+        self.send_kvp_client()
+        self.kvp_add_value(self.instance_name)
+        self.linux_client.kvp_verify_value()
+        self.servers_client.delete_server(self.instance['id'])
